@@ -1,0 +1,15 @@
+numpy
+pandas
+scikit-learn
+scipy
+joblib
+openpyxl
+flask
+global-land-mask
+matplotlib
+# only needed for fetch_arco_era5.py
+xarray
+zarr>=3
+gcsfs
+fsspec
+dask

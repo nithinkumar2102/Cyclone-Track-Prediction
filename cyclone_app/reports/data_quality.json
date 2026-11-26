@@ -1,0 +1,34 @@
+{
+  "rows_raw": 9226,
+  "rows_with_position": 7451,
+  "dates_day_month_corrected": 204,
+  "gap_splits": 129,
+  "bad_position_rows_dropped": 1,
+  "rows_clean": 7430,
+  "cyclones": 423,
+  "years": [
+    1982,
+    2026
+  ],
+  "missing_pct": {
+    "ecp": 10.4,
+    "wind_kt": 2.9,
+    "dp": 6.6,
+    "grade": 0.0,
+    "ci": 22.7
+  },
+  "record_interval_hours_pct": {
+    "3.0": 64.5,
+    "6.0": 28.2,
+    "9.0": 3.8,
+    "15.0": 2.7,
+    "12.0": 0.4,
+    "24.0": 0.1
+  },
+  "basin_counts": {
+    "BOB": 289,
+    "AS": 99,
+    "UNK": 35
+  },
+  "non_monotonic_or_big_gaps": 4
+}

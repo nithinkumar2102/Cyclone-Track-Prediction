@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cyclone Tracker – North Indian Ocean</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{--bg:#0f1720;--panel:#16212d;--panel2:#1c2937;--line:#2b3b4d;--txt:#e6edf3;--mut:#93a4b5;--acc:#3fb0ff;--warn:#ffb454}
+  *{box-sizing:border-box} body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  header{display:flex;align-items:center;gap:16px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:17px;margin:0;font-weight:650} header small{color:var(--mut)}
+  nav{margin-left:auto;display:flex;gap:6px} nav button{background:transparent;color:var(--mut);border:1px solid var(--line);padding:6px 12px;border-radius:6px;cursor:pointer}
+  nav button.on{background:var(--acc);color:#04121f;border-color:var(--acc);font-weight:600}
+  main{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 52px)}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:14px;overflow:auto}
+  label{display:block;color:var(--mut);font-size:12px;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+  select,input[type=range],textarea,input[type=text]{width:100%;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px}
+  textarea{font:12px/1.4 ui-monospace,Consolas,monospace;min-height:150px}
+  button.go{margin-top:10px;width:100%;background:var(--acc);color:#04121f;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer}
+  .view{display:none;height:100%} .view.on{display:block}
+  #fview{grid-template-rows:55% 45%;height:100%} #fview.on{display:grid}
+  #map{width:100%;height:100%} #lview,#aview,#eview{padding:18px;overflow:auto;height:100%}
+  .info{overflow:auto;padding:12px 16px;background:var(--bg)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px;margin-bottom:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .card h3{margin:0 0 4px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .card .big{font-size:20px;font-weight:650} .card .sub{color:var(--mut);font-size:12px}
+  table{border-collapse:collapse;width:100%;font-size:13px;background:var(--panel);border-radius:8px;overflow:hidden}
+  th,td{padding:6px 9px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap} th{color:var(--mut);font-weight:600;font-size:12px;background:var(--panel2)}
+  th:first-child,td:first-child{text-align:left}
+  .chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:650;color:#06121c}
+  .good{color:#5fdc8f}.bad{color:#ff7b72}.mut{color:var(--mut)} .warn{color:var(--warn)}
+  h2{font-size:15px;margin:16px 0 8px} p.note{color:var(--mut);font-size:12px;max-width:900px}
+  .bar{height:7px;border-radius:4px;background:var(--acc);display:inline-block;vertical-align:middle;margin-left:6px}
+  .legend{position:absolute;right:12px;bottom:12px;z-index:900;background:rgba(15,23,32,.9);border:1px solid var(--line);padding:8px 10px;border-radius:8px;font-size:11px}
+  .legend div{display:flex;align-items:center;gap:6px;margin:2px 0}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .mapwrap{position:relative}
+  @media(max-width:900px){main{grid-template-columns:1fr;height:auto}#fview{height:900px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌀 Cyclone Tracker <small>North Indian Ocean · ML forecast +6 … +48 h</small></h1>
+  <nav>
+    <button id="t-f" class="on">Forecast (replay)</button><button id="t-e">Lat / lon / date → ERA5</button><button id="t-l">Paste fixes</button><button id="t-a">Model accuracy</button>
+  </nav>
+</header>
+<main>
+<aside>
+  <div id="side-f">
+    <label>Year</label><select id="year"></select>
+    <label>Cyclone</label><select id="cyc"></select>
+    <label>Forecast issued at <span id="asoflab" class="mut"></span></label>
+    <input type="range" id="slider" min="0" max="0" value="0">
+    <p class="note">Replay mode: the model only sees fixes up to the chosen time; the dashed grey line shows what actually happened.</p>
+    <div id="obs"></div>
+  </div>
+  <div id="side-e" style="display:none">
+    <label>Cyclone centre – latitude (°N)</label><input type="text" id="e-lat" value="19.5">
+    <label>Longitude (°E)</label><input type="text" id="e-lon" value="86.0">
+    <label>Date &amp; time (UTC)</label><input type="datetime-local" id="e-time" value="2019-05-02T12:00" style="width:100%;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px">
+    <label>Name (optional)</label><input type="text" id="e-name" value="">
+    <label>Known wind, kt (optional)</label><input type="text" id="e-wind" placeholder="e.g. 90">
+    <label>Known central pressure, hPa (optional)</label><input type="text" id="e-ecp" placeholder="e.g. 950">
+    <button class="go" id="e-go">Pull ERA5 &amp; forecast</button>
+    <p class="note">The server reads Google ARCO-ERA5, finds the pressure minimum near your point, tracks it back up to 24 h, takes wind / pressure / pressure drop from the fields, then runs the +6…+48 h forecast. ARCO lags real time by a few months, so use a past date. The first call can take 10–60 s.</p>
+  </div>
+  <div id="side-l" style="display:none">
+    <label>Recent fixes (UTC, one per line)</label>
+    <textarea id="livecsv">time_utc,lat,lon,wind_kt,ecp
+2024-05-25 00:00,17.6,89.7,30,993
+2024-05-25 06:00,18.2,89.7,30,991
+2024-05-25 12:00,18.8,89.5,35,989
+2024-05-25 18:00,19.3,89.4,40,988
+2024-05-26 00:00,20.0,89.2,50,983</textarea>
+    <label>Name</label><input type="text" id="livename" value="LIVE">
+    <button class="go" id="livego">Forecast</button>
+    <p class="note">Give at least the last 2–4 fixes (6-hourly or 3-hourly). Columns: time_utc, lat, lon, wind_kt, optional ecp (hPa) and dp.</p>
+  </div>
+  <div id="side-a" style="display:none"><p class="note">Accuracy of the model on cyclones it has never seen. See the main panel.</p></div>
+</aside>
+<section>
+  <div id="fview" class="view on">
+    <div class="mapwrap"><div id="map"></div>
+      <div class="legend" id="legend"></div></div>
+    <div class="info" id="info"></div>
+  </div>
+  <div id="eview" class="view"><div id="eout" class="mut">Enter a position and date on the left, then press “Pull ERA5 &amp; forecast”.</div></div>
+  <div id="lview" class="view"><div id="liveout" class="mut">Enter fixes on the left and press Forecast.</div></div>
+  <div id="aview" class="view"></div>
+</section>
+</main>
+<script>
+const GR={LOPAR:["#7f8c8d","Low"],D:["#9aa5b1","D"],DD:["#5dade2","DD"],CS:["#52be80","CS"],SCS:["#f4d03f","SCS"],VSCS:["#eb984e","VSCS"],ESCS:["#e74c3c","ESCS"],SuCS:["#a569bd","SuCS"]};
+const GN={D:"Depression",DD:"Deep depression",CS:"Cyclonic storm",SCS:"Severe cyclonic storm",VSCS:"Very severe cyclonic storm",ESCS:"Extremely severe cyclonic storm",SuCS:"Super cyclonic storm"};
+const CITIES={"Chennai":[13.08,80.27],"Puducherry":[11.93,79.83],"Visakhapatnam":[17.69,83.22],"Kakinada":[16.96,82.24],"Machilipatnam":[16.17,81.14],"Ongole":[15.5,80.05],"Nellore":[14.44,79.99],"Paradip":[20.32,86.61],"Puri":[19.8,85.83],"Gopalpur":[19.26,84.91],"Digha":[21.62,87.55],"Kolkata":[22.57,88.36],"Sagar Island":[21.65,88.08],"Chittagong":[22.34,91.83],"Cox's Bazar":[21.45,91.98],"Khulna":[22.8,89.55],"Yangon":[16.8,96.15],"Sittwe":[20.15,92.9],"Trincomalee":[8.57,81.23],"Jaffna":[9.66,80.01],"Colombo":[6.93,79.86],"Nagapattinam":[10.77,79.84],"Mumbai":[19.08,72.88],"Veraval":[20.9,70.37],"Porbandar":[21.64,69.6],"Kutch (Jakhau)":[23.22,68.72],"Karachi":[24.86,67.0],"Goa":[15.5,73.83],"Mangalore":[12.87,74.84],"Kochi":[9.93,76.27],"Muscat":[23.59,58.41],"Salalah":[17.02,54.09],"Duqm":[19.66,57.7],"Ras al Hadd":[22.5,59.8],"Gwadar":[25.12,62.33]};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const chip=g=>{const c=(GR[g]||GR.D);return `<span class="chip" style="background:${c[0]}">${esc(c[1])}</span>`};
+const fmt=(x,u="",d=0)=>x==null?"–":(typeof x==="number"?x.toFixed(d):x)+u;
+const hav=(a,b,c,d)=>{const r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return 12742*Math.asin(Math.sqrt(x))};
+function near(lat,lon){let best=null;for(const [n,[a,b]] of Object.entries(CITIES)){const d=hav(lat,lon,a,b);if(!best||d<best[1])best=[n,d]}return best&&best[1]<250?`near ${best[0]} (~${Math.round(best[1])} km)`:""}
+const tfmt=t=>t?t.replace("T"," ").replace("Z"," UTC"):"–";
+const tshort=t=>t?t.slice(5,16).replace("T"," "):"–";
+const addH=(t,h)=>{const d=new Date(t.replace("Z",":00Z").replace("T","T"));d.setUTCHours(d.getUTCHours()+h);return d.toISOString().slice(0,16)+"Z"};
+
+// ---------------------------------------------------------------- map
+const map=L.map("map",{zoomControl:true}).setView([16,80],5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:10,attribution:"© OpenStreetMap"}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+$("legend").innerHTML=Object.entries(GN).map(([k,v])=>`<div><i style="background:${GR[k][0]}"></i>${k} · ${v}</div>`).join("")+`<div><i style="background:none;border:1px dashed #aaa"></i>actual (replay)</div><div><i style="background:none;border:1px solid #ffb454"></i>67% error radius</div>`;
+
+let CAT=[],CUR=null,TRACK=[],tmo=null;
+async function j(u,o){const r=await fetch(u,o);const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);return d}
+
+async function init(){
+  CAT=await j("/api/cyclones");
+  const ys=[...new Set(CAT.map(c=>c.year))].sort((a,b)=>b-a);
+  $("year").innerHTML=ys.map(y=>`<option>${y}</option>`).join("");
+  $("year").onchange=fillCyc; fillCyc();
+}
+function fillCyc(){
+  const y=+$("year").value, L=CAT.filter(c=>c.year===y).sort((a,b)=>a.start<b.start?-1:1);
+  $("cyc").innerHTML=L.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} · ${c.start.slice(5,10)} · ${c.peak_wind_kt??"?"} kt</option>`).join("");
+  $("cyc").onchange=loadCyc; loadCyc();
+}
+async function loadCyc(){
+  const id=$("cyc").value; if(!id)return;
+  CUR=await j("/api/cyclone/"+encodeURIComponent(id)); TRACK=CUR.track;
+  const sl=$("slider"); sl.min=0; sl.max=TRACK.length-1;
+  let k=TRACK.findIndex(p=>(p.wind_kt||0)>=34); if(k<1)k=Math.floor(TRACK.length/3); sl.value=Math.min(k,TRACK.length-1);
+  renderObs(); run();
+}
+$("slider").oninput=()=>{renderAsof();clearTimeout(tmo);tmo=setTimeout(run,180)};
+function renderAsof(){const p=TRACK[+$("slider").value];$("asoflab").textContent=p?"· "+tfmt(p.t):""}
+function renderObs(){
+  const L=CUR.lifecycle,lf=L.landfall;
+  $("obs").innerHTML=`<h2>Observed life-cycle (IMD best track)</h2><div class="cards" style="grid-template-columns:1fr">
+   <div class="card"><h3>Start</h3><div class="big">${tfmt(L.start.time)}</div><div class="sub">${fmt(L.start.lat,"°N",1)} ${fmt(L.start.lon,"°E",1)}</div></div>
+   <div class="card"><h3>End</h3><div class="big">${tfmt(L.end.time)}</div><div class="sub">${L.end.over_land?"dissipated over land":"dissipated over sea"} · lasted ${fmt(L.duration_h,"h")}</div></div>
+   <div class="card"><h3>Land crossing</h3>${lf?`<div class="big">${tfmt(lf.time)}</div><div class="sub">${esc(near(lf.lat,lf.lon))||fmt(lf.lat,"°N",1)+" "+fmt(lf.lon,"°E",1)}<br>${lf.dissipated_over_land?"over land until it dissipated: ":"time over land: "}<b>${fmt(lf.hours_over_land,"h",1)}</b> · speed at landfall ${fmt(lf.speed_kmh," km/h")}</div>`:`<div class="big">No landfall</div><div class="sub">stayed over sea</div>`}</div>
+   <div class="card"><h3>Intensity & speed</h3><div class="big">${fmt(L.peak_wind_kt," kt")}</div><div class="sub">min pressure ${fmt(L.min_pressure_hpa," hPa")} · max ΔP ${fmt(L.max_pressure_drop_hpa," hPa")}<br>mean speed ${fmt(L.mean_speed_kmh," km/h")} · max ${fmt(L.max_speed_kmh," km/h")}</div></div></div>`;
+}
+async function run(){
+  renderAsof(); const p=TRACK[+$("slider").value]; if(!p)return;
+  try{const r=await j(`/api/forecast/${encodeURIComponent(CUR.id)}?asof=${encodeURIComponent(p.t.replace("Z",""))}`);draw(r,true);$("info").innerHTML=html(r,true)}
+  catch(e){$("info").innerHTML=`<p class="bad">${esc(e.message)}</p>`}
+}
+
+// ---------------------------------------------------------------- drawing
+function draw(r,replay,mapObj){
+  layer.clearLayers(); const pts=[];
+  if(replay){
+    const all=TRACK.map(p=>[p.lat,p.lon]); L.polyline(all,{color:"#475669",weight:1.5,opacity:.8}).addTo(layer);
+    const k=+$("slider").value; const past=TRACK.slice(0,k+1).map(p=>[p.lat,p.lon]); L.polyline(past,{color:"#3fb0ff",weight:3}).addTo(layer);
+    TRACK.slice(0,k+1).forEach(p=>L.circleMarker([p.lat,p.lon],{radius:3,color:"#3fb0ff",fillColor:(GR[p.grade]||GR.D)[0],fillOpacity:1,weight:1}).bindTooltip(`${tfmt(p.t)}<br>${fmt(p.wind_kt," kt")} · ${fmt(p.ecp," hPa")}`).addTo(layer));
+    const a=[[r.current.lat,r.current.lon],...r.actual_after.map(p=>[p.lat,p.lon])];
+    if(a.length>1)L.polyline(a,{color:"#cfd8e3",weight:2.5,dashArray:"6 6"}).addTo(layer);
+    const L0=CUR.lifecycle; L.marker([L0.start.lat,L0.start.lon],{title:"start"}).bindTooltip("Start "+tfmt(L0.start.time)).addTo(layer);
+    L.circleMarker([L0.end.lat,L0.end.lon],{radius:6,color:"#fff",fillColor:"#222",fillOpacity:1}).bindTooltip("End "+tfmt(L0.end.time)).addTo(layer);
+    pts.push(...all);
+  } else { L.marker([r.start.lat,r.start.lon]).bindTooltip("First fix "+tfmt(r.start.time)).addTo(layer); pts.push([r.start.lat,r.start.lon]); }
+  const f=[[r.current.lat,r.current.lon],...r.forecast.map(p=>[p.lat,p.lon])];
+  L.polyline(f,{color:"#ffb454",weight:3}).addTo(layer);
+  L.circleMarker([r.current.lat,r.current.lon],{radius:7,color:"#fff",fillColor:(GR[r.current.grade]||GR.D)[0],fillOpacity:1,weight:2}).bindTooltip("Forecast issued "+tfmt(r.asof)).addTo(layer);
+  r.forecast.forEach(p=>{
+    if(p.err_radius_km)L.circle([p.lat,p.lon],{radius:p.err_radius_km*1000,color:"#ffb454",weight:1,fillOpacity:.05,dashArray:"3 4"}).addTo(layer);
+    L.circleMarker([p.lat,p.lon],{radius:6,color:"#222",weight:1,fillColor:(GR[p.grade]||GR.D)[0],fillOpacity:1}).bindTooltip(`+${p.h}h · ${tfmt(p.t)}<br>${p.wind_kt} kt · ${p.pressure_hpa} hPa<br>${GN[p.grade]||p.grade}`).addTo(layer);
+    pts.push([p.lat,p.lon]);
+  });
+  if(r.landfall)L.marker([r.landfall.lat,r.landfall.lon],{icon:L.divIcon({html:"⭐",className:"",iconSize:[22,22]})}).bindTooltip("Predicted landfall "+tfmt(r.landfall.time)).addTo(layer);
+  pts.push(...f); map.fitBounds(L.latLngBounds(pts).pad(.25));
+}
+
+// ---------------------------------------------------------------- panels
+function html(r,replay){
+  const c=r.current,lf=r.landfall,pe=r.predicted_end;
+  let landc=lf?`<div class="big">+${fmt(lf.lead_h,"h",0)} · ${tshort(lf.time)}</div><div class="sub">${esc(near(lf.lat,lf.lon))||fmt(lf.lat,"°N",1)+" "+fmt(lf.lon,"°E",1)}<br>time over land (in forecast): <b>${fmt(lf.hours_over_land,"h",1)}</b> – ${esc(lf.note)}</div>`
+    :c.over_land?`<div class="big">Already over land</div><div class="sub">system is inland</div>`:`<div class="big">No landfall in 48 h</div><div class="sub">forecast track stays over sea</div>`;
+  let endc=pe?`<div class="big">+${fmt(pe.lead_h,"h",0)} · ${tshort(pe.time)}</div><div class="sub">P(still a tracked system) drops below 50%</div>`:`<div class="big">Active at +48 h</div><div class="sub">no dissipation predicted in the window</div>`;
+  if(replay){const L=CUR.lifecycle;endc+=`<div class="sub">actual end: <b>${tfmt(L.end.time)}</b></div>`}
+  let h=`<div class="cards">
+   <div class="card"><h3>Now · ${tshort(r.asof)}</h3><div class="big">${fmt(c.wind_kt," kt")} ${chip(c.grade)}</div><div class="sub">${fmt(c.pressure_hpa," hPa")} · ΔP ${fmt(c.pressure_drop_hpa," hPa")}<br>${fmt(c.lat,"°N",1)} ${fmt(c.lon,"°E",1)} · ${fmt(c.wind_kmh," km/h")}</div></div>
+   <div class="card"><h3>Start (first fix)</h3><div class="big">${tshort(r.start.time)}</div><div class="sub">${fmt(r.start.lat,"°N",1)} ${fmt(r.start.lon,"°E",1)}</div></div>
+   <div class="card"><h3>Forward speed</h3><div class="big">${fmt(c.speed_kmh," km/h")}</div><div class="sub">now · forecast mean ${fmt(r.forecast_speed.mean_kmh," km/h")}<br>peak forecast wind ${fmt(r.forecast_speed.max_wind_kt," kt")}</div></div>
+   <div class="card"><h3>Land crossing</h3>${landc}</div>
+   <div class="card"><h3>End of cyclone</h3>${endc}</div></div>`;
+  h+=`<table><tr><th>Lead</th><th>Valid (UTC)</th><th>Lat</th><th>Lon</th><th>Wind kt</th><th>km/h</th><th>Pressure hPa</th><th>ΔP hPa</th><th>Class</th><th>Speed km/h</th><th>P(active)</th><th>±track km</th><th>Surface</th></tr>`
+   +r.forecast.map(p=>`<tr><td>+${p.h} h</td><td>${tshort(p.t)}</td><td>${fmt(p.lat,"",2)}</td><td>${fmt(p.lon,"",2)}</td><td><b>${fmt(p.wind_kt)}</b></td><td>${fmt(p.wind_kmh)}</td><td><b>${fmt(p.pressure_hpa)}</b></td><td>${fmt(p.pressure_drop_hpa)}</td><td>${chip(p.grade)}</td><td>${fmt(p.speed_kmh,"",1)}</td><td>${fmt(p.p_active,"",2)}</td><td class="mut">${fmt(p.err_radius_km)}</td><td>${p.over_land?"land":"sea"}</td></tr>`).join("")+`</table>`;
+  if(replay&&r.verification&&r.verification.length){
+    h+=`<h2>Verification against what actually happened</h2><table><tr><th>Lead</th>${r.verification.map(v=>`<th>+${v.h} h</th>`).join("")}</tr>
+    <tr><td>Track error km</td>${r.verification.map(v=>`<td>${fmt(v.track_err_km)}</td>`).join("")}</tr>
+    <tr><td>Wind error kt (fcst − obs)</td>${r.verification.map(v=>`<td>${fmt(v.wind_err_kt)}</td>`).join("")}</tr>
+    <tr><td>Pressure error hPa</td>${r.verification.map(v=>`<td>${fmt(v.pressure_err_hpa)}</td>`).join("")}</tr></table>`;
+  }
+  return h;
+}
+function tabs(n){for(const k of["f","e","l","a"]){$("t-"+k).classList.toggle("on",k===n);$("side-"+k).style.display=k===n?"":"none"}
+  $("fview").classList.toggle("on",n==="f");$("eview").classList.toggle("on",n==="e");$("lview").classList.toggle("on",n==="l");$("aview").classList.toggle("on",n==="a");
+  if(n==="f")setTimeout(()=>map.invalidateSize(),50); if(n==="a")loadAcc();}
+$("t-f").onclick=()=>tabs("f");$("t-e").onclick=()=>tabs("e");$("t-l").onclick=()=>tabs("l");$("t-a").onclick=()=>tabs("a");
+
+// shared renderer for results that have no replay truth (paste fixes / ERA5 tab)
+let MAPS={};
+function showStandalone(r,el,mid,extra){
+  el.innerHTML=(extra||"")+`<div style="height:380px;margin-bottom:12px" id="${mid}"></div>`+html(r,false);
+  if(MAPS[mid]){MAPS[mid].remove();delete MAPS[mid]}
+  const m=L.map(mid).setView([r.current.lat,r.current.lon],5);MAPS[mid]=m;
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:10,attribution:"© OpenStreetMap"}).addTo(m);
+  const f=[[r.current.lat,r.current.lon],...r.forecast.map(p=>[p.lat,p.lon])];
+  if(r.era5&&r.era5.history.length>1)L.polyline(r.era5.history.map(p=>[p.lat,p.lon]),{color:"#3fb0ff",weight:3}).addTo(m);
+  if(r.era5)r.era5.history.forEach(p=>L.circleMarker([p.lat,p.lon],{radius:4,color:"#3fb0ff",fillOpacity:1}).bindTooltip(`${tfmt(p.t)}<br>${p.wind_kt} kt · ${p.ecp} hPa`).addTo(m));
+  L.polyline(f,{color:"#ffb454",weight:3}).addTo(m);
+  r.forecast.forEach(p=>{if(p.err_radius_km)L.circle([p.lat,p.lon],{radius:p.err_radius_km*1000,color:"#ffb454",weight:1,fillOpacity:.05,dashArray:"3 4"}).addTo(m);
+    L.circleMarker([p.lat,p.lon],{radius:6,color:"#222",weight:1,fillColor:(GR[p.grade]||GR.D)[0],fillOpacity:1}).bindTooltip(`+${p.h}h · ${tfmt(p.t)}<br>${p.wind_kt} kt · ${p.pressure_hpa} hPa`).addTo(m)});
+  L.circleMarker([r.current.lat,r.current.lon],{radius:7,color:"#fff",weight:2,fillColor:(GR[r.current.grade]||GR.D)[0],fillOpacity:1}).addTo(m);
+  if(r.landfall)L.marker([r.landfall.lat,r.landfall.lon],{icon:L.divIcon({html:"⭐",className:"",iconSize:[22,22]})}).bindTooltip("Predicted landfall "+tfmt(r.landfall.time)).addTo(m);
+  m.fitBounds(L.latLngBounds([...f,...(r.era5?r.era5.history.map(p=>[p.lat,p.lon]):[])]).pad(.3));
+}
+$("livego").onclick=async()=>{
+  try{const r=await j("/api/forecast",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv:$("livecsv").value,name:$("livename").value})});
+    showStandalone(r,$("liveout"),"lmap");
+  }catch(e){$("liveout").innerHTML=`<p class="bad">${esc(e.message)}</p>`}
+};
+$("e-go").onclick=async()=>{
+  const out=$("eout"),btn=$("e-go");btn.disabled=true;btn.textContent="Reading ARCO-ERA5 …";
+  out.innerHTML='<p class="mut">Fetching ERA5 fields from Google ARCO and tracking the cyclone centre … (can take up to a minute)</p>';
+  try{
+    const body={lat:$("e-lat").value,lon:$("e-lon").value,time:$("e-time").value.replace("T"," "),name:$("e-name").value,wind_kt:$("e-wind").value,ecp:$("e-ecp").value};
+    const r=await j("/api/forecast_era5",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const e=r.era5;
+    const note=`<div class="card" style="margin-bottom:12px"><h3>How the starting state was built</h3>
+      <div class="sub">Requested ${fmt(e.requested.lat,"°N",2)} ${fmt(e.requested.lon,"°E",2)} at ${tfmt(e.requested.time)} → centre found ${fmt(e.center_shift_km," km")} from your point.
+      ${e.history.length} ERA5 position(s) reconstructed (${e.history.map(p=>tshort(p.t)).join(" → ")}).<br>
+      Intensity: ${esc(e.calibration)}${e.wind_override?"; "+esc(e.wind_override):""}${e.pressure_override?"; "+esc(e.pressure_override):""}.<br>
+      ERA5 store ends ${esc(e.store_end)} UTC.</div>
+      ${e.warnings.map(w=>`<div class="warn" style="margin-top:4px">⚠ ${esc(w)}</div>`).join("")}</div>`;
+    showStandalone(r,out,"emap",note);
+  }catch(err){out.innerHTML=`<p class="bad">${esc(err.message)}</p>`}
+  btn.disabled=false;btn.textContent="Pull ERA5 & forecast";
+};
+
+let ACC=null;
+async function loadAcc(){
+  if(!ACC)ACC=await j("/api/accuracy");
+  const tbl=(rows,title)=>`<h2>${title}</h2><table><tr><th>Lead</th><th>Track error km<br><span class="mut">model | baseline</span></th><th>Within 100 km</th><th>Within 200 km</th><th>Wind MAE kt<br><span class="mut">model | persistence</span></th><th>Within ±10 kt</th><th>Intensity class correct</th><th>Class ±1</th><th>Pressure MAE hPa<br><span class="mut">model | persistence</span></th><th>Within ±5 hPa</th><th>ΔP MAE hPa</th><th>Still-active accuracy</th></tr>`
+   +rows.map(r=>`<tr><td>+${r.horizon_h} h</td><td><b>${fmt(r.track_err_km)}</b> | ${fmt(r.base_track_err_km)} <span class="${r.track_skill_pct>0?"good":"bad"}">(${fmt(r.track_skill_pct,"%")})</span></td><td>${fmt(r.track_within_100km_pct,"%")}</td><td>${fmt(r.track_within_200km_pct,"%")}</td>
+   <td><b>${fmt(r.wind_mae_kt,"",1)}</b> | ${fmt(r.base_wind_mae_kt,"",1)}</td><td>${fmt(r.wind_within_10kt_pct,"%")}</td><td>${fmt(r.category_exact_pct,"%")}</td><td>${fmt(r.category_within1_pct,"%")}</td>
+   <td><b>${fmt(r.pressure_mae_hpa,"",1)}</b> | ${fmt(r.base_pressure_mae_hpa,"",1)}</td><td>${fmt(r.pressure_within_5hpa_pct,"%")}</td><td>${fmt(r.pdrop_mae_hpa,"",1)}</td><td>${fmt(r.active_acc_pct,"%")}</td></tr>`).join("")+"</table>";
+  const lf=(d,t)=>{if(!d)return"";const m=d.model,b=d.baseline;return `<h2>${t}</h2><table><tr><th></th><th>Forecasts</th><th>Landfall detected</th><th>False alarms</th><th>Yes/no correct</th><th>Landfall-time error</th><th>Within ±6 h</th><th>Position error</th></tr>
+   <tr><td>Model</td><td>${m.cases}</td><td>${fmt(m.detection_rate_pct,"%")}</td><td>${fmt(m.false_alarm_ratio_pct,"%")}</td><td>${fmt(m.correct_yes_no_pct,"%")}</td><td>${fmt(m.landfall_time_mae_h,"h",1)}</td><td>${fmt(m.landfall_time_within_6h_pct,"%")}</td><td>${fmt(m.landfall_position_mae_km," km")}</td></tr>
+   <tr><td>Baseline (constant motion)</td><td>${b.cases}</td><td>${fmt(b.detection_rate_pct,"%")}</td><td>${fmt(b.false_alarm_ratio_pct,"%")}</td><td>${fmt(b.correct_yes_no_pct,"%")}</td><td>${fmt(b.landfall_time_mae_h,"h",1)}</td><td>${fmt(b.landfall_time_within_6h_pct,"%")}</td><td>${fmt(b.landfall_position_mae_km," km")}</td></tr></table>`};
+  $("aview").innerHTML=`<p class="note">All numbers are measured on cyclones the model was <b>not</b> trained on. “Baseline” = extrapolating the last 6 h of motion (track) or keeping today’s value (wind, pressure). Percentages in brackets are the improvement over the baseline. Cross-validation holds out whole cyclones (5 folds, all years); the hold-out table trains on 1982–2022 and tests on 2023–2026.</p>`
+   +tbl(ACC.cv,"5-fold cross-validation by cyclone (1982–2026)")+lf(ACC.landfall_cv,"Land-crossing accuracy (cross-validation)")
+   +tbl(ACC.holdout,"Forward hold-out: trained to 2022, tested on 2023–2026")+lf(ACC.landfall_holdout,"Land-crossing accuracy (hold-out)");
+}
+init();
+</script>
+</body>
+</html>
